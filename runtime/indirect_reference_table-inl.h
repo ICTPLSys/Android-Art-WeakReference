@@ -90,6 +90,21 @@ inline ObjPtr<mirror::Object> IndirectReferenceTable::Get(IndirectRef iref) cons
   return obj;
 }
 
+// shengkai
+// add weak global get path
+template<ReadBarrierOption kReadBarrierOption>
+inline ObjPtr<mirror::Object> IndirectReferenceTable::GetWeak(IndirectRef iref) const {
+  DCHECK_EQ(GetIndirectRefKind(iref), kind_);
+  uint32_t idx = ExtractIndex(iref);
+  DCHECK_LT(idx, top_index_);
+  DCHECK_EQ(DecodeSerial(reinterpret_cast<uintptr_t>(iref)), table_[idx].GetSerial());
+  DCHECK(!table_[idx].GetReference()->IsNull());
+  // TODO New Read Method of GCRoot
+  ObjPtr<mirror::Object> obj = table_[idx].GetReference()->ReadWeak<kReadBarrierOption>();
+  VerifyObject(obj);
+  return obj;
+}
+
 inline void IndirectReferenceTable::Update(IndirectRef iref, ObjPtr<mirror::Object> obj) {
   DCHECK_EQ(GetIndirectRefKind(iref), kind_);
   uint32_t idx = ExtractIndex(iref);

@@ -202,6 +202,68 @@ inline MirrorType* ReadBarrier::BarrierForRoot(mirror::CompressedReference<Mirro
   }
 }
 
+// shengkai
+// add weak global get path
+template <typename MirrorType, ReadBarrierOption kReadBarrierOption>
+inline MirrorType* ReadBarrier::BarrierForRootWeak(mirror::CompressedReference<MirrorType>* root,
+                                               GcRootSource* gc_root_source) {
+  MirrorType* ref = root->AsMirrorPtr();
+  const bool with_read_barrier = kReadBarrierOption == kWithReadBarrier;
+  if (gUseReadBarrier && with_read_barrier) {
+    if (kCheckDebugDisallowReadBarrierCount) {
+      Thread* const self = Thread::Current();
+      CHECK(self != nullptr);
+      CHECK_EQ(self->GetDebugDisallowReadBarrierCount(), 0u);
+    }
+    if (kUseBakerReadBarrier) {//shengkai we should use baker barrier under cc on arm
+      // TODO: separate the read barrier code from the collector code more.
+      Thread* self = Thread::Current();
+      // shengkai
+      // caution not gray obj during weak access disabled
+      if (self != nullptr && self->GetIsGcMarking()) {
+        const bool weak_ref_enabled = self->GetWeakRefAccessEnabled();
+        if (weak_ref_enabled) {
+          ref = reinterpret_cast<MirrorType*>(Mark(ref));
+        } else {
+          // 1. SweepJniWeakGlobals may move object to to-space -> return to space ptr
+          // 2. the ref may have been forwarded -> return FwdPtr
+          mirror::Object* forwarded_ref = Runtime::Current()->GetHeap()->ConcurrentCopyingCollector()->IsMarked(ref);
+          ref = reinterpret_cast<MirrorType*>(forwarded_ref);
+        }
+      }
+      AssertToSpaceInvariant(gc_root_source, ref);
+      return ref;
+    } else if (kUseTableLookupReadBarrier) {
+      Thread* self = Thread::Current();
+      if (self != nullptr &&
+          self->GetIsGcMarking() &&
+          Runtime::Current()->GetHeap()->GetReadBarrierTable()->IsSet(ref)) {
+        auto old_ref = mirror::CompressedReference<MirrorType>::FromMirrorPtr(ref);
+        ref = reinterpret_cast<MirrorType*>(Mark(ref));
+        auto new_ref = mirror::CompressedReference<MirrorType>::FromMirrorPtr(ref);
+        // Update the field atomically. This may fail if mutator updates before us, but it's ok.
+        if (new_ref.AsMirrorPtr() != old_ref.AsMirrorPtr()) {
+          auto* atomic_root =
+              reinterpret_cast<Atomic<mirror::CompressedReference<MirrorType>>*>(root);
+          atomic_root->CompareAndSetStrongRelaxed(old_ref, new_ref);
+        }
+      }
+      AssertToSpaceInvariant(gc_root_source, ref);
+      return ref;
+    } else {
+      LOG(FATAL) << "Unexpected read barrier type";
+      UNREACHABLE();
+    }
+  } else if (kReadBarrierOption == kWithFromSpaceBarrier) {
+    DCHECK(gUseUserfaultfd);
+    mirror::Object* from_ref =
+        Runtime::Current()->GetHeap()->MarkCompactCollector()->GetFromSpaceAddrFromBarrier(ref);
+    return reinterpret_cast<MirrorType*>(from_ref);
+  } else {
+    return ref;
+  }
+}
+
 template <typename MirrorType>
 inline MirrorType* ReadBarrier::IsMarked(MirrorType* ref) {
   // Only read-barrier configurations can have mutators run while

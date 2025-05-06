@@ -887,8 +887,14 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // TODO: Otherwise we should just wait for kInitMarkingDone, and track which weak globals were
   // marked at that point. We would only need one mark bit per entry in the weak_globals_ table,
   // and a quick pass over that early on during reference processing.
-  WaitForWeakGlobalsAccess(self);
-  return weak_globals_.Get(ref);
+
+  // shengkai don't need WaitForWeakGlobalsAccess(self);
+  // forbit graying obj during weak access disabled in barrier
+  // return NULL or ptr in to-space
+
+  // WaitForWeakGlobalsAccess(self);
+  // Caution! .Get(ref) would gray obj during mark!
+  return weak_globals_.GetWeak(ref);
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalAsStrong(IndirectRef ref) {
@@ -912,12 +918,28 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, I
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  WaitForWeakGlobalsAccess(self);
+  // WaitForWeakGlobalsAccess(self);
   // When just checking a weak ref has been cleared, avoid triggering the read barrier in decode
   // (DecodeWeakGlobal) so that we won't accidentally mark the object alive. Since the cleared
   // sentinel is a non-moving object, we can compare the ref to it without the read barrier and
   // decide if it's cleared.
-  return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+
+  // shengkai don't need WaitForWeakGlobalsAccess(self); if holding lock
+  // not during weak access disable
+  //   return IsClearedJniWeakGlobal
+  // during weak access disable
+  // 1. before SweepJniWeakGlobals(in GetWeak)
+  //    test mark bit or NULL
+  // 2. after SweepJniWeakGlobals
+  //    get updated ptr(in to-space) or NULL
+
+  ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+  // if (Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.GetWeak<kWithoutReadBarrier>(ref)) || (gUseReadBarrier && !MayAccessWeakGlobals(self) && referent != nullptr && referent->GetMarkBit() == 0)) {
+  if (Runtime::Current()->IsClearedJniWeakGlobal(referent) || referent == nullptr) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {

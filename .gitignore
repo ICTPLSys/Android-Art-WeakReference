@@ -5,3 +5,4 @@ JIT_ART
 **/*.pyc
 **/*.swn
 tools/boot.out
+.vscode
