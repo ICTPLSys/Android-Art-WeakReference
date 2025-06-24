@@ -744,6 +744,19 @@ void JavaVMExt::WaitForWeakGlobalsAccess(Thread* self) {
   }
 }
 
+void JavaVMExt::WaitForWeakGlobalsProcessPrepare(Thread* self) {
+  if (UNLIKELY(!MayPreparingWeakGlobals(self))) {
+    ATraceBegin("Blocking on WeakReference Process Preparation");
+    do {
+      // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the
+      // presence of threads blocking for weak ref access.
+      self->CheckEmptyCheckpointFromWeakRefAccess(Locks::jni_weak_globals_lock_);
+      weak_globals_add_condition_.WaitHoldingLocks(self);
+    } while (!MayPreparingWeakGlobals(self));
+    ATraceEnd();
+  }
+}
+
 jweak JavaVMExt::AddWeakGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
   if (obj == nullptr) {
     return nullptr;
@@ -892,7 +905,9 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // forbit graying obj during weak access disabled in barrier
   // return NULL or ptr in to-space
 
-  // WaitForWeakGlobalsAccess(self);
+  // shengkai
+  // disable weak ref access when cc clearing mark stack
+  WaitForWeakGlobalsProcessPrepare(self);
   // Caution! .Get(ref) would gray obj during mark!
   return weak_globals_.GetWeak(ref);
 }

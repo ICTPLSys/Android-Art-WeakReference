@@ -231,6 +231,9 @@ class JavaVMExt : public JavaVM {
 
   // Return true if self can currently access weak globals.
   bool MayAccessWeakGlobals(Thread* self) const REQUIRES_SHARED(Locks::mutator_lock_);
+  // shengkai
+  // need Locks::mutator_lock_
+  bool MayPreparingWeakGlobals(Thread* self) const REQUIRES_SHARED(Locks::mutator_lock_);
 
   void WaitForWeakGlobalsAccess(Thread* self)
       REQUIRES_SHARED(Locks::mutator_lock_)

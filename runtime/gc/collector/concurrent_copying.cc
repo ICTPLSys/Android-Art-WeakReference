@@ -1640,6 +1640,12 @@ void ConcurrentCopying::CopyingPhase() {
     // a weak-ref (after participating in the checkpoint), and another mutator indefinitely waits
     // for the mutex before it participates in the checkpoint. Consequently, the gc-thread blocks
     // forever as the checkpoint never finishes (See runtime/mutator_gc_coord.md).
+    // shengkai todo
+    // disable concurrent weak ref access
+    // make a global flag and judge it when !self->GetWeakRefAccessEnabled()
+    // don't need lock
+    allow_accessing_weak_globals_.store(false, std::memory_order_seq_cst);
+
     SwitchToSharedMarkStackMode();
     CHECK(!self->GetWeakRefAccessEnabled());
 
@@ -1658,6 +1664,13 @@ void ConcurrentCopying::CopyingPhase() {
     if (kVerboseMode) {
       LOG(INFO) << "ProcessReferences";
     }
+    // shengkai todo
+    // 1. keep CHECK(!self->GetWeakRefAccessEnabled());
+    // 2. reenable concurrent weak ref access
+    allow_accessing_weak_globals_.store(true, std::memory_order_seq_cst);
+    Thread* const self = Thread::Current();
+    weak_globals_add_condition_.Broadcast(self);
+
     // Process weak references. This also marks through finalizers. Although
     // reference processing is "disabled", some accesses will proceed once we've ensured that
     // objects directly reachable by the mutator are marked, i.e. before we mark through
