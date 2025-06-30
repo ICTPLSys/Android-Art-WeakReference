@@ -1644,7 +1644,8 @@ void ConcurrentCopying::CopyingPhase() {
     // disable concurrent weak ref access
     // make a global flag and judge it when !self->GetWeakRefAccessEnabled()
     // don't need lock
-    allow_accessing_weak_globals_.store(false, std::memory_order_seq_cst);
+    Runtime* runtime_instance = Runtime::Current();
+    runtime_instance->DisallowCCNewSystemWeaks();
 
     SwitchToSharedMarkStackMode();
     CHECK(!self->GetWeakRefAccessEnabled());
@@ -1667,9 +1668,7 @@ void ConcurrentCopying::CopyingPhase() {
     // shengkai todo
     // 1. keep CHECK(!self->GetWeakRefAccessEnabled());
     // 2. reenable concurrent weak ref access
-    allow_accessing_weak_globals_.store(true, std::memory_order_seq_cst);
-    Thread* const self = Thread::Current();
-    weak_globals_add_condition_.Broadcast(self);
+    runtime_instance->AllowCCNewSystemWeaks();
 
     // Process weak references. This also marks through finalizers. Although
     // reference processing is "disabled", some accesses will proceed once we've ensured that

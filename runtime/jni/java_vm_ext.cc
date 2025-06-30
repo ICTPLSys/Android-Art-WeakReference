@@ -862,6 +862,22 @@ void JavaVMExt::AllowNewWeakGlobals() {
   weak_globals_add_condition_.Broadcast(self);
 }
 
+// CC don't need to exclusively hold mutator lock
+void JavaVMExt::DisallowCCNewWeakGlobals() {
+  CHECK(gUseReadBarrier);
+  Thread* const self = Thread::Current();
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  allow_accessing_weak_globals_.store(false, std::memory_order_seq_cst);
+}
+
+void JavaVMExt::AllowCCNewWeakGlobals() {
+  CHECK(gUseReadBarrier);
+  Thread* self = Thread::Current();
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  allow_accessing_weak_globals_.store(true, std::memory_order_seq_cst);
+  weak_globals_add_condition_.Broadcast(self);
+}
+
 void JavaVMExt::BroadcastForNewWeakGlobals() {
   Thread* self = Thread::Current();
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);

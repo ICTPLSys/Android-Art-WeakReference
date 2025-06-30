@@ -148,6 +148,12 @@ class JavaVMExt : public JavaVM {
   void AllowNewWeakGlobals()
       REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!Locks::jni_weak_globals_lock_);
+  // shengkai
+  // add definations for cc
+  void DisallowCCNewWeakGlobals()
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+  void AllowCCNewWeakGlobals()
+      REQUIRES(!Locks::jni_weak_globals_lock_);
   void BroadcastForNewWeakGlobals()
       REQUIRES(!Locks::jni_weak_globals_lock_);
 
@@ -236,6 +242,12 @@ class JavaVMExt : public JavaVM {
   bool MayPreparingWeakGlobals(Thread* self) const REQUIRES_SHARED(Locks::mutator_lock_);
 
   void WaitForWeakGlobalsAccess(Thread* self)
+      REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(Locks::jni_weak_globals_lock_);
+
+  // shengkai
+  // add definition for cc
+  void WaitForWeakGlobalsProcessPrepare(Thread* self)
       REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(Locks::jni_weak_globals_lock_);
 
