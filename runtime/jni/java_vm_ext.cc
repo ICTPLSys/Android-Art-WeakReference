@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "gc/collector_type.h"
 #include "java_vm_ext-inl.h"
 
 #include <dlfcn.h>
@@ -744,6 +745,19 @@ void JavaVMExt::WaitForWeakGlobalsAccess(Thread* self) {
   }
 }
 
+void JavaVMExt::WaitForWeakGlobalsProcessPrepare(Thread* self) {
+  if (UNLIKELY(!MayPreparingWeakGlobals(self))) {
+    ATraceBegin("Blocking on WeakReference Process Preparation");
+    do {
+      // Check and run the empty checkpoint before blocking so the empty checkpoint will work in the
+      // presence of threads blocking for weak ref access.
+      self->CheckEmptyCheckpointFromWeakRefAccess(Locks::jni_weak_globals_lock_);
+      weak_globals_add_condition_.WaitHoldingLocks(self);
+    } while (!MayPreparingWeakGlobals(self));
+    ATraceEnd();
+  }
+}
+
 jweak JavaVMExt::AddWeakGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
   if (obj == nullptr) {
     return nullptr;
@@ -849,6 +863,22 @@ void JavaVMExt::AllowNewWeakGlobals() {
   weak_globals_add_condition_.Broadcast(self);
 }
 
+// CC don't need to exclusively hold mutator lock
+void JavaVMExt::DisallowCCNewWeakGlobals() {
+  CHECK(gUseReadBarrier);
+  Thread* const self = Thread::Current();
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  allow_accessing_weak_globals_.store(false, std::memory_order_seq_cst);
+}
+
+void JavaVMExt::AllowCCNewWeakGlobals() {
+  CHECK(gUseReadBarrier);
+  Thread* self = Thread::Current();
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  allow_accessing_weak_globals_.store(true, std::memory_order_seq_cst);
+  weak_globals_add_condition_.Broadcast(self);
+}
+
 void JavaVMExt::BroadcastForNewWeakGlobals() {
   Thread* self = Thread::Current();
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
@@ -887,8 +917,22 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   // TODO: Otherwise we should just wait for kInitMarkingDone, and track which weak globals were
   // marked at that point. We would only need one mark bit per entry in the weak_globals_ table,
   // and a quick pass over that early on during reference processing.
-  WaitForWeakGlobalsAccess(self);
-  return weak_globals_.Get(ref);
+
+  // shengkai don't need WaitForWeakGlobalsAccess(self);
+  // forbit graying obj during weak access disabled in barrier
+  // return NULL or ptr in to-space
+
+  // shengkai
+  // disable weak ref access when cc clearing mark stack
+  gc::Heap* heap = Runtime::Current()->GetHeap();
+  if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
+    WaitForWeakGlobalsProcessPrepare(self);
+    // Caution! .Get(ref) would gray obj during mark!
+    return weak_globals_.GetWeak(ref);
+  } else {
+    WaitForWeakGlobalsAccess(self);
+    return weak_globals_.Get(ref);
+  }
 }
 
 ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalAsStrong(IndirectRef ref) {
@@ -912,12 +956,35 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalDuringShutdown(Thread* self, I
 bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   DCHECK_EQ(IndirectReferenceTable::GetIndirectRefKind(ref), kWeakGlobal);
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
-  WaitForWeakGlobalsAccess(self);
+  // WaitForWeakGlobalsAccess(self);
+  // WaitForWeakGlobalsProcessPrepare(self);
   // When just checking a weak ref has been cleared, avoid triggering the read barrier in decode
   // (DecodeWeakGlobal) so that we won't accidentally mark the object alive. Since the cleared
   // sentinel is a non-moving object, we can compare the ref to it without the read barrier and
   // decide if it's cleared.
-  return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+
+  // shengkai don't need WaitForWeakGlobalsAccess(self); if holding lock
+  // not during weak access disable
+  //   return IsClearedJniWeakGlobal
+  // during weak access disable
+  // 1. before SweepJniWeakGlobals(in GetWeak)
+  //    test mark bit or NULL
+  // 2. after SweepJniWeakGlobals
+  //    get updated ptr(in to-space) or NULL
+
+  gc::Heap* heap = Runtime::Current()->GetHeap();
+  if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
+    WaitForWeakGlobalsProcessPrepare(self);
+    ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
+    if (Runtime::Current()->IsClearedJniWeakGlobal(referent) || referent == nullptr) {
+      return true;
+    } else {
+      return false;
+    }
+  } else {
+    WaitForWeakGlobalsAccess(self);
+    return Runtime::Current()->IsClearedJniWeakGlobal(weak_globals_.Get<kWithoutReadBarrier>(ref));
+  }
 }
 
 void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {

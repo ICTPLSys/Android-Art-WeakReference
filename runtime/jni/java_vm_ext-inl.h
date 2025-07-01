@@ -31,6 +31,13 @@ inline bool JavaVMExt::MayAccessWeakGlobals(Thread* self) const {
       : allow_accessing_weak_globals_.load(std::memory_order_seq_cst);
 }
 
+// shengkai
+// disable weak ref access when cc clearing mark stack
+inline bool JavaVMExt::MayPreparingWeakGlobals(Thread* self) const {
+  DCHECK(self != nullptr);
+  return allow_accessing_weak_globals_.load(std::memory_order_seq_cst);
+}
+
 }  // namespace art
 
 #endif  // ART_RUNTIME_JNI_JAVA_VM_EXT_INL_H_

@@ -171,6 +171,12 @@ class IndirectReferenceTable {
   ObjPtr<mirror::Object> Get(IndirectRef iref) const REQUIRES_SHARED(Locks::mutator_lock_)
       ALWAYS_INLINE;
 
+  // shengkai
+  // add weak global get path
+    template<ReadBarrierOption kReadBarrierOption = kWithReadBarrier>
+  ObjPtr<mirror::Object> GetWeak(IndirectRef iref) const REQUIRES_SHARED(Locks::mutator_lock_)
+      ALWAYS_INLINE;
+
   // Updates an existing indirect reference to point to a new object.
   void Update(IndirectRef iref, ObjPtr<mirror::Object> obj) REQUIRES_SHARED(Locks::mutator_lock_);
 

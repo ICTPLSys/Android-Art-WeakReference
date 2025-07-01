@@ -194,6 +194,12 @@ class GcRoot {
   ALWAYS_INLINE MirrorType* Read(GcRootSource* gc_root_source = nullptr) const
       REQUIRES_SHARED(Locks::mutator_lock_);
 
+  // shengkai
+  // add weak global get path
+  template<ReadBarrierOption kReadBarrierOption = kWithReadBarrier>
+  ALWAYS_INLINE MirrorType* ReadWeak(GcRootSource* gc_root_source = nullptr) const
+      REQUIRES_SHARED(Locks::mutator_lock_);
+
   // TODO: This is often called repeatedly from functions to process an explicit array of roots.
   // And it calls a function that takes an array of roots. By processing a single root at a time
   // here and turning it into a 1-element array, do we lose performance? Or does the compiler

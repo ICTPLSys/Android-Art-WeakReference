@@ -71,6 +71,13 @@ class ReadBarrier {
                                                   GcRootSource* gc_root_source = nullptr)
       REQUIRES_SHARED(Locks::mutator_lock_);
 
+  // shengkai
+  // add weak global get path
+  template <typename MirrorType, ReadBarrierOption kReadBarrierOption = kWithReadBarrier>
+  ALWAYS_INLINE static MirrorType* BarrierForRootWeak(mirror::CompressedReference<MirrorType>* root,
+                                                  GcRootSource* gc_root_source = nullptr)
+      REQUIRES_SHARED(Locks::mutator_lock_);
+
   // Return the mirror Object if it is marked, or null if not.
   template <typename MirrorType>
   ALWAYS_INLINE static MirrorType* IsMarked(MirrorType* ref)

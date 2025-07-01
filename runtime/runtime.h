@@ -454,6 +454,11 @@ class Runtime {
 
   void DisallowNewSystemWeaks() REQUIRES_SHARED(Locks::mutator_lock_);
   void AllowNewSystemWeaks() REQUIRES_SHARED(Locks::mutator_lock_);
+  // shengkai
+  // add definition for cc
+  void DisallowCCNewSystemWeaks() REQUIRES_SHARED(Locks::mutator_lock_);
+  void AllowCCNewSystemWeaks() REQUIRES_SHARED(Locks::mutator_lock_);
+  
   // broadcast_for_checkpoint is true when we broadcast for making blocking threads to respond to
   // checkpoint requests. It's false when we broadcast to unblock blocking threads after system weak
   // access is reenabled.

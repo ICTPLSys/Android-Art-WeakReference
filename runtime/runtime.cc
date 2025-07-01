@@ -2809,6 +2809,18 @@ void Runtime::AllowNewSystemWeaks() {
   }
 }
 
+// shengkai 
+// add definition for cc
+void Runtime::DisallowCCNewSystemWeaks() {
+  CHECK(gUseReadBarrier);
+  java_vm_->DisallowCCNewWeakGlobals();
+}
+
+void Runtime::AllowCCNewSystemWeaks() {
+  CHECK(gUseReadBarrier);
+  java_vm_->AllowCCNewWeakGlobals();
+}
+
 void Runtime::BroadcastForNewSystemWeaks(bool broadcast_for_checkpoint) {
   // This is used for the read barrier case that uses the thread-local
   // Thread::GetWeakRefAccessEnabled() flag and the checkpoint while weak ref access is disabled
