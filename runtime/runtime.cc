@@ -2821,6 +2821,28 @@ void Runtime::AllowCCNewSystemWeaks() {
   java_vm_->AllowCCNewWeakGlobals();
 }
 
+// yizhe
+void Runtime::DisallowCCWeakGlobalsAccessForFinalizer() {
+  CHECK(gUseReadBarrier);
+  java_vm_->DisallowCCWeakGlobalsAccessForFinalizer();
+}
+
+void Runtime::AllowCCWeakGlobalsAccessForFinalizer() {
+  CHECK(gUseReadBarrier);
+  java_vm_->AllowCCWeakGlobalsAccessForFinalizer();
+}
+
+
+void Runtime::UpdateMarkState() {
+  CHECK(gUseReadBarrier);
+  java_vm_->UpdateMarkState();
+}
+
+void Runtime::ResetMarkState(bool value) {
+  CHECK(gUseReadBarrier);
+  java_vm_->ResetMarkState(value);
+}
+
 void Runtime::BroadcastForNewSystemWeaks(bool broadcast_for_checkpoint) {
   // This is used for the read barrier case that uses the thread-local
   // Thread::GetWeakRefAccessEnabled() flag and the checkpoint while weak ref access is disabled

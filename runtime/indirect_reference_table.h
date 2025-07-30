@@ -257,9 +257,21 @@ class IndirectReferenceTable {
   bool IsValidReference(IndirectRef, /*out*/std::string* error_msg) const
       REQUIRES_SHARED(Locks::mutator_lock_);
 
+  bool GetMarkState(IndirectRef iref) const {
+    DCHECK(iref != nullptr);
+    uint32_t idx = ExtractIndex(iref);
+    return mark_state_[idx];
+  } 
+
   EXPORT void SweepJniWeakGlobals(IsMarkedVisitor* visitor) REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!Locks::jni_weak_globals_lock_);
 
+  EXPORT void UpdateMarkState() REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+  
+  EXPORT void ResetMarkState(bool value) REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+  
  private:
   static constexpr uint32_t kShiftedSerialMask = (1u << kIRTSerialBits) - 1;
 
@@ -320,6 +332,13 @@ class IndirectReferenceTable {
   // Bottom of the stack. Do not directly access the object references
   // in this as they are roots. Use Get() that has a read barrier.
   IrtEntry* table_;
+  // yizhe: add a map to store the mark-state of the iref
+  MemMap mark_state_mem_map_;
+  /* Mark state for each iref in CC GC
+      - true: The referent was alive before finalizer process, it is safe to access without waiting for finalizer completion.
+      - false: The referent might be processed by finalizer, must wait for finalizer process to complete before access.
+  */
+  bool* mark_state_;
   // Bit mask, ORed into all irefs.
   const IndirectRefKind kind_;
 

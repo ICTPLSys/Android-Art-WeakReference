@@ -220,6 +220,17 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
     rp_state_ = RpState::kInitMarkingDone;
     condition_.Broadcast(self);
   }
+
+    // shengkai todo
+    // 1. keep CHECK(!self->GetWeakRefAccessEnabled());
+    // 2. reenable concurrent weak ref access
+    Runtime* runtime = Runtime::Current();
+    if (runtime->GetHeap()->CurrentCollectorType() == gc::kCollectorTypeCC) {
+      // yizhe: update the mark state of the weak global references
+      runtime->UpdateMarkState();
+      runtime->AllowCCNewSystemWeaks();
+    }
+
   if (kIsDebugBuild && collector_->IsTransactionActive()) {
     // In transaction mode, we shouldn't enqueue any Reference to the queues.
     // See DelayReferenceReferent().
@@ -298,6 +309,11 @@ void ReferenceProcessor::ProcessReferences(Thread* self, TimingLogger* timings) 
   DCHECK(weak_reference_queue_.IsEmpty());
   DCHECK(finalizer_reference_queue_.IsEmpty());
   DCHECK(phantom_reference_queue_.IsEmpty());
+
+  if (runtime->GetHeap()->CurrentCollectorType() == gc::kCollectorTypeCC) {
+    runtime->ResetMarkState(true);
+    runtime->AllowCCWeakGlobalsAccessForFinalizer();
+  }
 
   {
     MutexLock mu(self, *Locks::reference_processor_lock_);

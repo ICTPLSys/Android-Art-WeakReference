@@ -535,9 +535,13 @@ JavaVMExt::JavaVMExt(Runtime* runtime, const RuntimeArgumentMap& runtime_options
       unchecked_functions_(&gJniInvokeInterface),
       weak_globals_(kWeakGlobal),
       allow_accessing_weak_globals_(true),
+      finalizer_process_finished_(true),
       weak_globals_add_condition_("weak globals add condition",
                                   (CHECK(Locks::jni_weak_globals_lock_ != nullptr),
                                    *Locks::jni_weak_globals_lock_)),
+      finalizer_process_finished_condition_("finalizer process finished condition",
+                                            (CHECK(Locks::jni_weak_globals_lock_ != nullptr),
+                                             *Locks::jni_weak_globals_lock_)),
       env_hooks_lock_("environment hooks lock", art::kGenericBottomLock),
       env_hooks_(),
       enable_allocation_tracking_delta_(
@@ -758,6 +762,17 @@ void JavaVMExt::WaitForWeakGlobalsProcessPrepare(Thread* self) {
   }
 }
 
+void JavaVMExt::WaitForFinalizerProcess(Thread* self) {
+  if (UNLIKELY(!IsFinalizerProcessFinished(self))) {
+    ATraceBegin("Blocking on Finalizer Process");
+    do {
+      self->CheckEmptyCheckpointFromWeakRefAccess(Locks::jni_weak_globals_lock_);
+      finalizer_process_finished_condition_.WaitHoldingLocks(self);
+    } while (!IsFinalizerProcessFinished(self));
+    ATraceEnd();
+  }
+}
+
 jweak JavaVMExt::AddWeakGlobalRef(Thread* self, ObjPtr<mirror::Object> obj) {
   if (obj == nullptr) {
     return nullptr;
@@ -885,6 +900,22 @@ void JavaVMExt::BroadcastForNewWeakGlobals() {
   weak_globals_add_condition_.Broadcast(self);
 }
 
+// yizhe
+void JavaVMExt::DisallowCCWeakGlobalsAccessForFinalizer() {
+  CHECK(gUseReadBarrier);
+  Thread* const self = Thread::Current();
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  finalizer_process_finished_.store(false, std::memory_order_seq_cst);
+}
+
+void JavaVMExt::AllowCCWeakGlobalsAccessForFinalizer() {
+  CHECK(gUseReadBarrier);
+  Thread* const self = Thread::Current();
+  MutexLock mu(self, *Locks::jni_weak_globals_lock_);
+  finalizer_process_finished_.store(true, std::memory_order_seq_cst);
+  finalizer_process_finished_condition_.Broadcast(self);
+}
+
 ObjPtr<mirror::Object> JavaVMExt::DecodeGlobal(IndirectRef ref) {
   return globals_.Get(ref);
 }
@@ -927,6 +958,9 @@ ObjPtr<mirror::Object> JavaVMExt::DecodeWeakGlobalLocked(Thread* self, IndirectR
   gc::Heap* heap = Runtime::Current()->GetHeap();
   if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
     WaitForWeakGlobalsProcessPrepare(self);
+    if (!weak_globals_.GetMarkState(ref)) {
+      WaitForFinalizerProcess(self);
+    }
     // Caution! .Get(ref) would gray obj during mark!
     return weak_globals_.GetWeak(ref);
   } else {
@@ -975,6 +1009,9 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
   gc::Heap* heap = Runtime::Current()->GetHeap();
   if (heap->CurrentCollectorType() == gc::kCollectorTypeCC) {
     WaitForWeakGlobalsProcessPrepare(self);
+    if (!weak_globals_.GetMarkState(ref)) {
+      WaitForFinalizerProcess(self);
+    }
     ObjPtr<mirror::Object> referent = weak_globals_.GetWeak(ref);
     if (Runtime::Current()->IsClearedJniWeakGlobal(referent) || referent == nullptr) {
       return true;
@@ -990,6 +1027,14 @@ bool JavaVMExt::IsWeakGlobalCleared(Thread* self, IndirectRef ref) {
 void JavaVMExt::UpdateWeakGlobal(Thread* self, IndirectRef ref, ObjPtr<mirror::Object> result) {
   MutexLock mu(self, *Locks::jni_weak_globals_lock_);
   weak_globals_.Update(ref, result);
+}
+
+void JavaVMExt::ResetMarkState(bool value) {
+  weak_globals_.ResetMarkState(value);
+}
+
+void JavaVMExt::UpdateMarkState() {
+  weak_globals_.UpdateMarkState();
 }
 
 void JavaVMExt::DumpReferenceTables(std::ostream& os) {

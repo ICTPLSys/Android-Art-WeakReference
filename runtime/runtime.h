@@ -458,6 +458,12 @@ class Runtime {
   // add definition for cc
   void DisallowCCNewSystemWeaks() REQUIRES_SHARED(Locks::mutator_lock_);
   void AllowCCNewSystemWeaks() REQUIRES_SHARED(Locks::mutator_lock_);
+  // yizhe
+  void DisallowCCWeakGlobalsAccessForFinalizer() REQUIRES_SHARED(Locks::mutator_lock_);
+  void AllowCCWeakGlobalsAccessForFinalizer() REQUIRES_SHARED(Locks::mutator_lock_);
+
+  void UpdateMarkState() REQUIRES_SHARED(Locks::mutator_lock_);
+  void ResetMarkState(bool value) REQUIRES_SHARED(Locks::mutator_lock_);
   
   // broadcast_for_checkpoint is true when we broadcast for making blocking threads to respond to
   // checkpoint requests. It's false when we broadcast to unblock blocking threads after system weak

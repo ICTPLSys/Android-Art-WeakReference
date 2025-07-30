@@ -157,6 +157,12 @@ class JavaVMExt : public JavaVM {
   void BroadcastForNewWeakGlobals()
       REQUIRES(!Locks::jni_weak_globals_lock_);
 
+  // yizhe
+  void DisallowCCWeakGlobalsAccessForFinalizer()
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+  void AllowCCWeakGlobalsAccessForFinalizer()
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+
   EXPORT jobject AddGlobalRef(Thread* self, ObjPtr<mirror::Object> obj)
       REQUIRES_SHARED(Locks::mutator_lock_) REQUIRES(!Locks::jni_globals_lock_);
 
@@ -208,6 +214,12 @@ class JavaVMExt : public JavaVM {
       REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(!Locks::jni_weak_globals_lock_);
 
+  void ResetMarkState(bool value) REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+
+  void UpdateMarkState() REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(!Locks::jni_weak_globals_lock_);
+
   const JNIInvokeInterface* GetUncheckedFunctions() const {
     return unchecked_functions_;
   }
@@ -240,6 +252,8 @@ class JavaVMExt : public JavaVM {
   // shengkai
   // need Locks::mutator_lock_
   bool MayPreparingWeakGlobals(Thread* self) const REQUIRES_SHARED(Locks::mutator_lock_);
+  // yizhe
+  bool IsFinalizerProcessFinished(Thread* self) const REQUIRES_SHARED(Locks::mutator_lock_);
 
   void WaitForWeakGlobalsAccess(Thread* self)
       REQUIRES_SHARED(Locks::mutator_lock_)
@@ -248,6 +262,12 @@ class JavaVMExt : public JavaVM {
   // shengkai
   // add definition for cc
   void WaitForWeakGlobalsProcessPrepare(Thread* self)
+      REQUIRES_SHARED(Locks::mutator_lock_)
+      REQUIRES(Locks::jni_weak_globals_lock_);
+
+
+  // yizhe
+  void WaitForFinalizerProcess(Thread* self)
       REQUIRES_SHARED(Locks::mutator_lock_)
       REQUIRES(Locks::jni_weak_globals_lock_);
 
@@ -284,7 +304,9 @@ class JavaVMExt : public JavaVM {
   // read barrier enabled or disabled based on the use case.
   IndirectReferenceTable weak_globals_;
   Atomic<bool> allow_accessing_weak_globals_;
+  Atomic<bool> finalizer_process_finished_;
   ConditionVariable weak_globals_add_condition_ GUARDED_BY(Locks::jni_weak_globals_lock_);
+  ConditionVariable finalizer_process_finished_condition_ GUARDED_BY(Locks::jni_weak_globals_lock_);
 
   // TODO Maybe move this to Runtime.
   ReaderWriterMutex env_hooks_lock_ BOTTOM_MUTEX_ACQUIRED_AFTER;

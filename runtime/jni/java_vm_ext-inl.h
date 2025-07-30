@@ -38,6 +38,11 @@ inline bool JavaVMExt::MayPreparingWeakGlobals(Thread* self) const {
   return allow_accessing_weak_globals_.load(std::memory_order_seq_cst);
 }
 
+// yizhe
+inline bool JavaVMExt::IsFinalizerProcessFinished(Thread* self) const {
+  DCHECK(self != nullptr);
+  return finalizer_process_finished_.load(std::memory_order_seq_cst);
+}
 }  // namespace art
 
 #endif  // ART_RUNTIME_JNI_JAVA_VM_EXT_INL_H_

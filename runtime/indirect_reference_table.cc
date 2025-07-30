@@ -104,6 +104,17 @@ bool IndirectReferenceTable::Initialize(size_t max_count, std::string* error_msg
   }
 
   table_ = reinterpret_cast<IrtEntry*>(table_mem_map_.Begin());
+  // yizhe: initialize the mark_state_mem_map_ and mark_state_
+  const size_t mark_state_bytes = RoundUp(max_count * sizeof(bool), gPageSize);
+  mark_state_mem_map_ = NewIRTMap(mark_state_bytes, error_msg);
+  if (!mark_state_mem_map_.IsValid()) {
+    DCHECK(!error_msg->empty());
+    return false;
+  }
+  mark_state_ = reinterpret_cast<bool*>(mark_state_mem_map_.Begin());
+  for (size_t i = 0; i < max_count; i++) {
+    mark_state_[i] = false;
+  }
   // Take into account the actual length.
   max_entries_ = table_bytes / sizeof(IrtEntry);
   return true;
@@ -350,6 +361,30 @@ void IndirectReferenceTable::SweepJniWeakGlobals(IsMarkedVisitor* visitor) {
       }
       *entry = GcRoot<mirror::Object>(new_obj);
     }
+  }
+}
+
+void IndirectReferenceTable::UpdateMarkState() {
+  CHECK_EQ(kind_, kWeakGlobal);
+
+  for (size_t i = 0, capacity = Capacity(); i != capacity; ++i) {
+    GcRoot<mirror::Object>* entry = table_[i].GetReference();
+    // Need to skip null here to distinguish between null entries and cleared weak ref entries.
+    if (!entry->IsNull()) {
+      // yizhe: during ReadWeak, we will check if the obj is marked
+      mirror::Object* obj = entry->ReadWeak<kWithoutReadBarrier>();
+      if (obj != nullptr) {
+        mark_state_[i] = true;
+      }
+    }
+  }
+}
+
+void IndirectReferenceTable::ResetMarkState(bool value) {
+  CHECK_EQ(kind_, kWeakGlobal);
+  
+  for (size_t i = 0; i < max_entries_; i++) {
+    mark_state_[i] = value;
   }
 }
 
