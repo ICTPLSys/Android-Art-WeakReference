@@ -372,7 +372,7 @@ void IndirectReferenceTable::UpdateMarkState() {
     // Need to skip null here to distinguish between null entries and cleared weak ref entries.
     if (!entry->IsNull()) {
       // yizhe: during ReadWeak, we will check if the obj is marked
-      mirror::Object* obj = entry->ReadWeak<kWithoutReadBarrier>();
+      mirror::Object* obj = entry->ReadWeak<kWithReadBarrier>();
       if (obj != nullptr) {
         mark_state_[i] = true;
       }
